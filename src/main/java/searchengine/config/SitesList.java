@@ -13,4 +13,7 @@ import java.util.List;
 @ConfigurationProperties(prefix = "indexing-settings")
 public class SitesList {
     private List<Site> sites;
+    private int lemma_threshold;
+    private String userAgent;
+    private String referrer;
 }

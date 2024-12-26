@@ -1,0 +1,6 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Mon Nov 27 10:36:31 MSK 2023
+https\://repo.maven.apache.org/maven2/.lastUpdated=1700554137752
+@default-skillbox-gitlab-https\://gitlab.skillbox.ru/api/v4/projects/263574/packages/maven/.lastUpdated=1700554051510
+https\://gitlab.skillbox.ru/api/v4/projects/263574/packages/maven/.error=Could not transfer artifact org.apache.lucene\:lucene-core\:jar\:8.11.0 from/to skillbox-gitlab (https\://gitlab.skillbox.ru/api/v4/projects/263574/packages/maven)\: No PSK available. Unable to resume.
+https\://nexus-ci.corp.dev.vtb/repository/pfomb-maven/.lastUpdated=1701070591446

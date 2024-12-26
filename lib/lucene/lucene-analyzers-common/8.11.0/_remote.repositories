@@ -1,0 +1,6 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Mon Nov 27 10:36:31 MSK 2023
+lucene-analyzers-common-8.11.0.jar>central=
+lucene-analyzers-common-8.11.0.pom>nexus-ci-pfom=
+lucene-analyzers-common-8.11.0.jar>nexus-ci-pfom=
+lucene-analyzers-common-8.11.0.pom>central=

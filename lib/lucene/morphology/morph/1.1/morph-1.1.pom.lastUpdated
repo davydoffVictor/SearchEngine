@@ -1,0 +1,6 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Wed Nov 08 19:01:18 MSK 2023
+@default-skillbox-gitlab-https\://gitlab.skillbox.ru/api/v4/projects/263574/packages/maven/.lastUpdated=1699459277693
+https\://gitlab.skillbox.ru/api/v4/projects/263574/packages/maven/.error=Could not transfer artifact org.apache.lucene.morphology\:morph\:pom\:1.1 from/to skillbox-gitlab (https\://gitlab.skillbox.ru/api/v4/projects/263574/packages/maven)\: PKIX path building failed\: sun.security.provider.certpath.SunCertPathBuilderException\: unable to find valid certification path to requested target
+https\://repo.maven.apache.org/maven2/.error=
+https\://repo.maven.apache.org/maven2/.lastUpdated=1699459278052

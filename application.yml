@@ -1,0 +1,32 @@
+server:
+  port: 8080
+spring:
+  datasource:
+    username: root
+    password: testtest
+    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+logging:
+  level:
+    root: info
+    searchengine.services.management.Node: error
+    searchengine.services.management.NodePageExplorer: error
+
+
+indexing-settings:
+  sites:
+    - url: https://www.svetlovka.ru/
+      name: СВЕТЛОВКА молодежная библиотека
+    - url: https://playback.ru/
+      name: Интернет магазин Playback.RU
+    - url: https://sendel.ru/
+      name: Sendel Site
+  lemma-threshold: 70 #in percents
+  user-agent: DavydoffSearchBot
+  referrer: http://www.google.com
