@@ -16,7 +16,6 @@ import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.services.common.Lemmatizator;
 import searchengine.services.ManagementService;
-import searchengine.services.statistics.StatisticsServiceImpl;
 
 import java.io.IOException;
 import java.math.BigInteger;
@@ -77,13 +76,7 @@ public class ManagementServiceImpl implements ManagementService {
 
         indexingIsRunning = true;
         indexingIsStopped = false;
-
         Node.pages = new TreeSet<>();
-
-        for (Site siteInput : sites.getSites()) {
-            Logger.getLogger(StatisticsServiceImpl.class.getName()).info(siteInput.getName() + " " + siteInput.getUrl());
-            createNewDeleteOld(siteInput, "INDEXING", "");
-        }
 
         ExecutorService executor = Executors.newFixedThreadPool(1);
         IndexAllMainThread indexAllMainThread = new IndexAllMainThread(this, siteRepository, pageRepository, sites);

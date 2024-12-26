@@ -3,11 +3,7 @@ package searchengine.repositories;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
-import searchengine.config.Site;
 import searchengine.model.SiteEntity;
-
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 public interface SiteRepository extends JpaRepository<SiteEntity, Integer> {

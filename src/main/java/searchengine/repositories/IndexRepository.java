@@ -1,6 +1,5 @@
 package searchengine.repositories;
 
-import org.jboss.jandex.Index;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;

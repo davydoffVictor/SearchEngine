@@ -4,6 +4,7 @@ import searchengine.config.Site;
 import searchengine.config.SitesList;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.statistics.StatisticsServiceImpl;
 
 import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
@@ -27,6 +28,12 @@ public class IndexAllMainThread implements Runnable {
 
     @Override
     public void run() {
+
+        for (Site siteInput : sites.getSites()) {
+            Logger.getLogger(StatisticsServiceImpl.class.getName()).info(siteInput.getName() + " " + siteInput.getUrl());
+            service.createNewDeleteOld(siteInput, "INDEXING", "");
+        }
+
         ExecutorService executor = Executors.newFixedThreadPool(sites.getSites().size());
         service.setIndexingIsRunning(true);
         service.setIndexingIsStopped(false);
