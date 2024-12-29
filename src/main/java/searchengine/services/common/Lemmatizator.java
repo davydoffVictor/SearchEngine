@@ -1,5 +1,6 @@
 package searchengine.services.common;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
@@ -9,18 +10,17 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.logging.Logger;
 
 @Service
+@Slf4j
 public class Lemmatizator {
     private final LuceneMorphology luceneMorph = initiateRussianLuceneMorphology();
-    private final Logger log = Logger.getLogger(Lemmatizator.class.getName());
 
     private LuceneMorphology initiateRussianLuceneMorphology() {
         try {
             return new RussianLuceneMorphology();
         } catch (IOException e) {
-            e.printStackTrace();
+            log.error(e.getMessage(), e);
         }
         return null;
     }

@@ -2,6 +2,7 @@ package searchengine.services.management;
 
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -15,10 +16,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.TreeSet;
-import java.util.logging.Logger;
 
 @Getter
 @Setter
+@Slf4j
 public class Node {
     public static TreeSet<String> pages = new TreeSet<>();
     private static String userAgent = "DavydoffSearchBot";//Default value, can be overwritten in configuration file
@@ -32,7 +33,6 @@ public class Node {
     private StringBuilder html;
     private ManagementServiceImpl service;
     private Connection.Response response;
-    private static final Logger log = Logger.getLogger(Node.class.getName());
 
 
 
@@ -49,13 +49,13 @@ public class Node {
                     .ignoreHttpErrors(true)
                     .execute();
         } catch (IOException e) {
-            e.printStackTrace();
+            log.error(e.getMessage(), e);
         }
-        doc = response.parse();
-        html = new StringBuilder(doc.outerHtml());
-        elements = doc.select("a[href]");
-
-
+        if (response != null) {
+            doc = response.parse();
+            html = new StringBuilder(doc.outerHtml());
+            elements = doc.select("a[href]");
+        }
     }
 
     @Transactional
@@ -94,7 +94,6 @@ public class Node {
 
         synchronized (Node.pages) {
             Node.pages.addAll(refsOnLevel);
-
         }
 
         if (!service.getIndexingIsRunning()) {
@@ -106,8 +105,7 @@ public class Node {
             try {
                 returnCollection.add(new Node(service.extractPageAndSiteFromUrl(r).getPath(),  level + 1, service, siteEntity));
             } catch (IOException e) {
-                log.info("Error occured: " + e.getMessage() + " R: " + r );
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         });
         log.info("Added " + refsOnLevel.size() + " new links in database from " + url);
@@ -117,13 +115,17 @@ public class Node {
 
     public PageEntity savePage(String ref) {
         log.info("Node.savePage ref: " + ref);
-//            SiteEntity site = new SiteEntity();
         Page page = service.extractPageAndSiteFromUrl(ref);
         PageEntity pageEntity = new PageEntity();
         pageEntity.setPath(page.getPath());
         pageEntity.setSiteEntity(siteEntity);
-        pageEntity.setCode(response.statusCode());
-        pageEntity.setContent(html.toString());
+        if (response != null) {
+            pageEntity.setCode(response.statusCode());
+            pageEntity.setContent(html.toString());
+        } else {
+            pageEntity.setCode(404);
+            pageEntity.setContent("");
+        }
         service.savePageAndRefreshStatusTime(pageEntity);
         log.info("Saved to DB: " + ref);
         return pageEntity;

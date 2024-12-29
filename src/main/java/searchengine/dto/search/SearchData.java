@@ -9,5 +9,5 @@ public class SearchData {
     private String uri;
     private String title;
     private String snippet;
-    private double relevance;
+    private Float relevance;
 }

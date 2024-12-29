@@ -9,7 +9,6 @@ public class LemmaComparator implements Comparator<Lemma> {
         if (compare != 0) {
             return compare;
         }
-
         return o1.getLemma().compareTo(o2.getLemma());
     }
 }

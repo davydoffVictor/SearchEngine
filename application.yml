@@ -2,23 +2,28 @@ server:
   port: 8080
 spring:
   datasource:
-    username: root
-    password: testtest
-    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
+    username: skillbox
+    password: skillbox
+    url: jdbc:postgresql://localhost:5432/search_engine
+    driver-class-name: org.postgresql.Driver
+  liquibase:
+    change-log: classpath:/db/master.xml
+    enabled: true
+    drop-first: false
   jpa:
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQL8Dialect
+        jdbc:
+          lob:
+            non_contextual_creation: true
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     show-sql: false
 logging:
   level:
     root: info
     searchengine.services.management.Node: error
     searchengine.services.management.NodePageExplorer: error
-
-
 indexing-settings:
   sites:
     - url: https://www.svetlovka.ru/

@@ -4,6 +4,6 @@ import lombok.Data;
 
 @Data
 public class StatisticsResponse {
-    private boolean result;
+    private Boolean result;
     private StatisticsData statistics;
 }

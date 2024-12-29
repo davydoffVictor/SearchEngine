@@ -2,13 +2,14 @@ package searchengine.services.management;
 
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.hibernate.*;
+import org.jsoup.Connection;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
 import searchengine.dto.management.IndexingResponse;
-import searchengine.dto.management.IndexingResponseWithError;
 import searchengine.model.*;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
@@ -16,17 +17,15 @@ import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.services.common.Lemmatizator;
 import searchengine.services.ManagementService;
-
 import java.io.IOException;
-import java.math.BigInteger;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.logging.Logger;
 
+@Slf4j
 @Service
 @Getter
 @Setter
@@ -41,8 +40,6 @@ public class ManagementServiceImpl implements ManagementService {
 
     private volatile boolean indexingIsRunning = false;
     private volatile boolean indexingIsStopped = false;
-    private final Logger log = Logger.getLogger(ManagementServiceImpl.class.getName());
-
 
     public ManagementServiceImpl(SitesList sites, PageRepository pageRepository, SiteRepository siteRepository, LemmaRepository lemmaRepository
                                  ,IndexRepository indexRepository, SessionFactory sessionFactory, Lemmatizator lemmatizator) {
@@ -68,10 +65,7 @@ public class ManagementServiceImpl implements ManagementService {
     @Override
     public IndexingResponse startIndexing() {
         if (indexingIsRunning) {
-            IndexingResponseWithError response = new IndexingResponseWithError();
-            response.setResult(false);
-            response.setError("Индексация уже запущена");
-            return response;
+            throw new IndexingAlreadyStartedException("Индексация уже запущена");
         }
 
         indexingIsRunning = true;
@@ -95,33 +89,28 @@ public class ManagementServiceImpl implements ManagementService {
             indexingIsRunning = false;
             IndexingResponse response = new IndexingResponse();
             response.setResult(true);
-
+            log.info("Останавливаем индексацию");
 
             while (!indexingIsStopped) {
                 Thread.onSpinWait();
-
             }
 
             return response;
         } else {
-            IndexingResponseWithError response = new IndexingResponseWithError();
-            response.setResult(false);
-            response.setError("Индексация не запущена");
-            return response;
+            throw new IndexingNotStartedException("Индексация не запущена");
         }
     }
 
     @Override
     public IndexingResponse addUpdatePage(String url) {
+        if (url.isEmpty()) {
+            throw new PageOutOfSitesRangeException("Нужно указать URL страницы");
+        }
 
         Page page = extractPageAndSiteFromUrl(url);
         PageEntity pageEntity = page.getPageEntity();
-
         if (page.getSiteEntity() == null) {
-            IndexingResponseWithError response = new IndexingResponseWithError();
-            response.setResult(false);
-            response.setError("Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
-            return response;
+            throw new PageOutOfSitesRangeException("Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
         }
 
         if (page.getPageEntity() != null) {
@@ -136,35 +125,27 @@ public class ManagementServiceImpl implements ManagementService {
             log.info("Downloading page: " + page.getSite() + page.getPath() + " site id: " + page.getSiteEntity().getId());
             try {
                 Node node = new Node(page.getPath(), 0, this, page.getSiteEntity());
-                node.savePage(page.getSiteEntity().getUrl() + page.getPath());
-                int statusCode = node.getResponse().statusCode();
-                if (!isOkStatusCode(statusCode)) {
-                    return errorDuringPageOpening(statusCode);
+                Connection.Response response = node.getResponse();
+                if (response == null) {
+                    throw new ErrorDuringPageOpeningException("Ошибка при открытии указанной страницы");
                 }
-//                pageEntity = pageRepository.findByPathAndSite(pageEntity.getPath(), pageEntity.getSiteEntity().getId());
-                pageEntity = pageRepository.findByPathAndSite(page.getPath(), page.getSiteId());
+                node.savePage(page.getSiteEntity().getUrl() + page.getPath());
+                int statusCode = response.statusCode();
+                if (!isOkStatusCode(statusCode)) {
+                    throw new ErrorDuringPageOpeningException("Ошибка: " + statusCode + " при открытии указанной страницы");
+                }
+                pageEntity = pageRepository.findByPathAndSiteEntity(page.getPath(), page.getSiteEntity());
                 log.info("path: " + pageEntity.getPath() + " siteid: " + pageEntity.getSiteEntity().getId());
                 log.info("new pageEntity: " + pageEntity);
             } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-
-        }
-
-        if (pageEntity != null) {
-            int statusCode = pageEntity.getCode();
-            if (!isOkStatusCode(statusCode)) {
-                return errorDuringPageOpening(statusCode);
+                log.error(e.getMessage(), e);
             }
         }
-
-
 
         ExecutorService executor = Executors.newFixedThreadPool(1);
         IndexSinglePageThread indexSinglePageThread = new IndexSinglePageThread(this, pageEntity);
         executor.submit(indexSinglePageThread);
         executor.shutdown();
-
 
         IndexingResponse response = new IndexingResponse();
         response.setResult(true);
@@ -172,12 +153,10 @@ public class ManagementServiceImpl implements ManagementService {
     }
 
 
-
-
     @Transactional
     public void indexPage(PageEntity pageEntity) {
         log.info("URL: " + pageEntity.getPath() + " site id: " + pageEntity.getSiteEntity().getId());
-        boolean alreadyIndexed = (indexRepository.countLemmasByPage(pageEntity.getId()) > 0);
+        boolean alreadyIndexed = (indexRepository.countLemmasByPageEntity(pageEntity) > 0);
         if (alreadyIndexed) {
             log.info("Already indexed! " + pageEntity.getSiteEntity().getUrl() + pageEntity.getPath() + " " + pageEntity.getId());
             reduceRankForLemmasOnPage(pageEntity);
@@ -203,7 +182,7 @@ public class ManagementServiceImpl implements ManagementService {
             if (tx != null) {
                 tx.rollback();
             } else {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
     }
@@ -218,11 +197,10 @@ public class ManagementServiceImpl implements ManagementService {
             if (tx != null) {
                 tx.rollback();
             } else {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
     }
-
 
     private void deleteLemmasWithZeroRankForSite(SiteEntity site) {
         Transaction tx = null;
@@ -234,7 +212,7 @@ public class ManagementServiceImpl implements ManagementService {
             if (tx != null) {
                 tx.rollback();
             } else {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
     }
@@ -263,7 +241,7 @@ public class ManagementServiceImpl implements ManagementService {
             if (tx != null) {
                 tx.rollback();
             } else {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
     }
@@ -271,14 +249,14 @@ public class ManagementServiceImpl implements ManagementService {
 
     @Transactional
     private LemmaEntity saveOrUpdateLemma(String lemma, PageEntity page) {
-        List<LemmaEntity> lemmaEntityList = lemmaRepository.findAllByLemmaForSite(lemma, page.getSiteEntity().getId());
+        List<LemmaEntity> lemmaEntityList = lemmaRepository.findByLemmaAndSiteEntity(lemma, page.getSiteEntity());
         LemmaEntity lemmaEntity = null;
         if (!lemmaEntityList.isEmpty()) {
             lemmaEntity = lemmaEntityList.get(0);
         }
 
         if (lemmaEntity != null) {
-            int pageCount = pageRepository.countPagesOnSite(page.getSiteEntity().getId());
+            int pageCount = pageRepository.countBySiteEntity(page.getSiteEntity());
 //            log.info("Lemma found: " + lemmaEntity.toString());
             int frequency = lemmaEntity.getFrequency();
             lemmaEntity.setFrequency((frequency >= pageCount) ? pageCount : frequency + 1);
@@ -293,12 +271,11 @@ public class ManagementServiceImpl implements ManagementService {
         }
 
         return lemmaEntity;
-
     }
 
     @Transactional
     private void saveIndex(LemmaEntity lemmaEntity, int count, PageEntity pageEntity) {
-        IndexEntity indexEntity = indexRepository.findByPageAndLemma(lemmaEntity.getId(), pageEntity.getId());
+        IndexEntity indexEntity = indexRepository.findByLemmaEntityAndPageEntity(lemmaEntity, pageEntity);
         if (indexEntity == null) {
             indexEntity = new IndexEntity();
             indexEntity.setLemmaEntity(lemmaEntity);
@@ -347,7 +324,7 @@ public class ManagementServiceImpl implements ManagementService {
             if (tx != null) {
                 tx.rollback();
             } else {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
     }
@@ -362,7 +339,7 @@ public class ManagementServiceImpl implements ManagementService {
             if (tx != null) {
                 tx.rollback();
             } else {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
     }
@@ -377,7 +354,7 @@ public class ManagementServiceImpl implements ManagementService {
             if (tx != null) {
                 tx.rollback();
             } else {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
     }
@@ -392,7 +369,7 @@ public class ManagementServiceImpl implements ManagementService {
             if (tx != null) {
                 tx.rollback();
             } else {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
     }
@@ -407,7 +384,7 @@ public class ManagementServiceImpl implements ManagementService {
             if (tx != null) {
                 tx.rollback();
             } else {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
     }
@@ -434,13 +411,13 @@ public class ManagementServiceImpl implements ManagementService {
 
     public void deleteDuplicatedLemmasForSites() {
         Session session = sessionFactory.openSession();
-//        String sql = "select lemma as lemma, min(id) as min_id, max(id) as max_id from lemma where lemma in (select lemma from lemma group by lemma, site_id having count(1) > 1) group by lemma";
         String sql = "with x as (\n" +
                 "select lemma, site_id from lemma group by lemma, site_id having count(1) > 1\n" +
                 ") select lemma as lemma, min(id) as min_id, max(id) as max_id from (\n" +
                 "select l.* from x inner join lemma l on l.lemma = x.lemma and l.site_id = x.site_id) y\n" +
                 "group by lemma";
 
+        log.info("deleteDuplicatedLemmasForSites entered");
         List<DuplicatedLemmas> duplicatedLemmas =  mapDuplicatedLemmasQueryResults(session.createSQLQuery(sql).list());
         if (duplicatedLemmas == null || duplicatedLemmas.isEmpty()) {
             log.info("Duplicated lemmas not found");
@@ -454,29 +431,28 @@ public class ManagementServiceImpl implements ManagementService {
             handleDuplicatedLemmas(duplicatedLemmas);
 
         }
-         session.close();
-
-
+        session.close();
     }
 
     private List<DuplicatedLemmas> mapDuplicatedLemmasQueryResults(List<Object[]> result)
     {
         List<DuplicatedLemmas> list = new ArrayList<>();
-        BigInteger b;
-
+        Integer b;
         for (Object[] object : result) {
             DuplicatedLemmas duplicatedLemmas = new DuplicatedLemmas();
             if (object[0] != null) {
                 duplicatedLemmas.setLemma((String)object[0]);
             }
             if (object[1] != null) {
-                b = (BigInteger)object[1];
-                duplicatedLemmas.setMinId(b.intValue());
+                b = (Integer)object[1];
+                duplicatedLemmas.setMinId(b);
             }
+
             if (object[2] != null) {
-                b = (BigInteger)object[2];
-                duplicatedLemmas.setMaxId(b.intValue());
+                b = (Integer)object[2];
+                duplicatedLemmas.setMaxId(b);
             }
+
             list.add(duplicatedLemmas);
         }
         return list;
@@ -487,28 +463,29 @@ public class ManagementServiceImpl implements ManagementService {
         for (DuplicatedLemmas duplicatedLemma : duplicatedLemmas) {
             try(Session session = sessionFactory.openSession()) {
                 log.info("Starting trxn for lemma: " + duplicatedLemma.getLemma());
-                int frequencyForMaxId = lemmaRepository.findById(duplicatedLemma.getMaxId()).get().getFrequency();
-                int indexIdToBeUpdated = indexRepository.findIdByLemmaId(duplicatedLemma.getMaxId());
+                LemmaEntity lemmaEntity = lemmaRepository.findById(duplicatedLemma.getMaxId()).get();
+                int frequencyForMaxId = lemmaEntity.getFrequency();
+                List<IndexEntity> indexEntityToBeUpdatedList = indexRepository.findByLemmaEntity(lemmaEntity);
 
                 tx = session.beginTransaction();
                 session.createSQLQuery("update lemma set frequency = frequency + " + frequencyForMaxId +
                         " where id = " + duplicatedLemma.getMinId()).executeUpdate();
-                session.createSQLQuery("update index_table set lemma_id = " + duplicatedLemma.getMinId() + " where id = " +
-                        indexIdToBeUpdated).executeUpdate();
+                for (IndexEntity indexEntityToBeUpdated : indexEntityToBeUpdatedList) {
+                    session.createSQLQuery("update index_table set lemma_id = " + duplicatedLemma.getMinId() + " where id = " +
+                            indexEntityToBeUpdated.getId()).executeUpdate();
+                }
                 session.createSQLQuery("delete from lemma where id =  " + duplicatedLemma.getMaxId()).executeUpdate();
                 log.info("Commiting trxn for lemma: " + duplicatedLemma.getLemma());
                 tx.commit();
                 log.info("Trxn committed");
             } catch (HibernateException e) {
-                log.info("Catched execption for trxns");
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
                 if (tx != null) {
                     tx.rollback();
                 } else {
-                    e.printStackTrace();
+                    log.error(e.getMessage(), e);
                 }
             }
-
         }
     }
 
@@ -526,7 +503,7 @@ public class ManagementServiceImpl implements ManagementService {
                 SiteEntity siteEntity = siteRepository.findByUrl(returnPage.getSite());
                 returnPage.setSiteEntity(siteEntity);
                 returnPage.setSiteId(siteEntity.getId());
-                PageEntity pageEntity = pageRepository.findByPathAndSite(returnPage.getPath(), returnPage.getSiteEntity().getId());
+                PageEntity pageEntity = pageRepository.findByPathAndSiteEntity(returnPage.getPath(), returnPage.getSiteEntity());
                 returnPage.setPageEntity(pageEntity);
                 return returnPage;
             }
@@ -547,20 +524,12 @@ public class ManagementServiceImpl implements ManagementService {
             {
                 log.info("Site: " + siteEntity.getUrl() + " FOUND in db");
             }
-
         }
     }
 
     public boolean isOkStatusCode(int statusCode) {
         String statusCodeStr = String.valueOf(statusCode);
         return statusCodeStr.startsWith("2") || statusCodeStr.startsWith("3");
-    }
-
-    private IndexingResponseWithError errorDuringPageOpening(int statusCode) {
-        IndexingResponseWithError response = new IndexingResponseWithError();
-        response.setResult(false);
-        response.setError("Ошибка: " + statusCode + " при открытии указанной страницы");
-        return response;
     }
 
     private void deletePage(int pageId) {
@@ -573,7 +542,7 @@ public class ManagementServiceImpl implements ManagementService {
             if (tx != null) {
                 tx.rollback();
             } else {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
     }

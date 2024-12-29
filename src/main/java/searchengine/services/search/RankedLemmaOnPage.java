@@ -6,6 +6,5 @@ import lombok.Data;
 public class RankedLemmaOnPage {
     private int id;
     private String lemma;
-    private int rank;
-
+    private float rank;
 }

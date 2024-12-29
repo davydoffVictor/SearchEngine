@@ -31,25 +31,22 @@ public class StatisticsServiceImpl implements StatisticsService {
         TotalStatistics total = new TotalStatistics();
         total.setSites(sites.getSites().size());
         total.setIndexing(managementService.getIndexingIsRunning());
-        total.setPages(pageRepository.countPages());
-        total.setLemmas(lemmaRepository.countLemmas());
+        total.setPages((int)pageRepository.count());
+        total.setLemmas((int)lemmaRepository.count());
 
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
         List<Site> sitesList = sites.getSites();
-        for (int i = 0; i < sitesList.size(); i++) {
-            Site site = sitesList.get(i);
-
+        for (Site site : sitesList) {
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());
             item.setUrl(site.getUrl());
-
 
             SiteEntity siteEntity = siteRepository.findByUrl(site.getUrl());
             if (siteEntity == null) {
                 continue;
             }
-            int pages = pageRepository.countPagesOnSite(siteEntity.getId());
-            int lemmas = lemmaRepository.countLemmasOnSite(siteEntity.getId());
+            int pages = pageRepository.countBySiteEntity(siteEntity);
+            int lemmas = lemmaRepository.countLemmasBySiteEntity(siteEntity);
             item.setPages(pages);
             item.setLemmas(lemmas);
             item.setStatus(siteEntity.getStatus());
@@ -70,7 +67,4 @@ public class StatisticsServiceImpl implements StatisticsService {
         response.setResult(true);
         return response;
     }
-
-
-
 }

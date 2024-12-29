@@ -25,5 +25,4 @@ public class IndexEntity {
 
     @Column(name = "rank_field", nullable = false)
     private Float rank;
-
 }

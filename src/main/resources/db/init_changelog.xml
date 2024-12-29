@@ -1,0 +1,126 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext" xmlns:pro="http://www.liquibase.org/xml/ns/pro" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/pro http://www.liquibase.org/xml/ns/pro/liquibase-pro-latest.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet author="Victor Davydov" id="111">
+        <sql>DROP CAST IF EXISTS (varchar AS site_status)</sql>
+        <sql>DROP TYPE IF EXISTS site_status;</sql>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-1">
+        <createTable tableName="index_table">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="rank_field" type="FLOAT(12)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="lemma_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="page_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-2">
+        <createTable tableName="lemma">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="frequency" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="lemma" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="site_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-3">
+        <createTable tableName="page">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="code" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content" type="LONGTEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="path" type="MEDIUMTEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="site_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <modifySql dbms="mysql">
+            <append value="ENGINE=INNODB CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci"/>
+        </modifySql>
+    </changeSet>
+    <changeSet author="Victor Davydov (partially generated)" id="1735293083833-4">
+        <sql>CREATE TYPE site_status AS ENUM ('INDEXING', 'INDEXED', 'FAILED')</sql>
+        <sql>CREATE CAST (CHARACTER VARYING AS site_status) WITH INOUT AS IMPLICIT</sql>
+        <createTable tableName="site">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="last_error" type="TEXT"/>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="site_status">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status_time" type="datetime">
+                <constraints nullable="false"/>
+            </column>
+            <column name="url" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-5">
+        <createIndex associatedWith="" indexName="FK1pagf7w9xbfmgqgfe7xlpkinv" tableName="index_table">
+            <column name="page_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-6">
+        <createIndex associatedWith="" indexName="FK2mxkags0kyprqxhhew7mo7cyn" tableName="index_table">
+            <column name="lemma_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-7">
+        <createIndex associatedWith="" indexName="FKfbq251d28jauqlxirb1k2cjag" tableName="lemma">
+            <column name="site_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-8">
+        <createIndex associatedWith="" indexName="FKj2jx0gqa4h7wg8ls0k3y221h2" tableName="page">
+            <column name="site_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-9">
+        <createIndex associatedWith="" indexName="lemma_idx" tableName="lemma">
+            <column name="lemma"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Victor Davydov (partially generated)" id="1735293083833-10">
+        <createIndex associatedWith="" indexName="path_idx" tableName="page">
+<!--            <column name="path(512)"/>-->
+            <column name="path"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-11">
+        <addForeignKeyConstraint baseColumnNames="page_id" baseTableName="index_table" constraintName="FK1pagf7w9xbfmgqgfe7xlpkinv" deferrable="false" initiallyDeferred="false" onDelete="RESTRICT" onUpdate="RESTRICT" referencedColumnNames="id" referencedTableName="page" validate="true"/>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-12">
+        <addForeignKeyConstraint baseColumnNames="lemma_id" baseTableName="index_table" constraintName="FK2mxkags0kyprqxhhew7mo7cyn" deferrable="false" initiallyDeferred="false" onDelete="RESTRICT" onUpdate="RESTRICT" referencedColumnNames="id" referencedTableName="lemma" validate="true"/>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-13">
+        <addForeignKeyConstraint baseColumnNames="site_id" baseTableName="lemma" constraintName="FKfbq251d28jauqlxirb1k2cjag" deferrable="false" initiallyDeferred="false" onDelete="RESTRICT" onUpdate="RESTRICT" referencedColumnNames="id" referencedTableName="site" validate="true"/>
+    </changeSet>
+    <changeSet author="Victor Davydov (generated)" id="1735293083833-14">
+        <addForeignKeyConstraint baseColumnNames="site_id" baseTableName="page" constraintName="FKj2jx0gqa4h7wg8ls0k3y221h2" deferrable="false" initiallyDeferred="false" onDelete="RESTRICT" onUpdate="RESTRICT" referencedColumnNames="id" referencedTableName="site" validate="true"/>
+    </changeSet>
+</databaseChangeLog>

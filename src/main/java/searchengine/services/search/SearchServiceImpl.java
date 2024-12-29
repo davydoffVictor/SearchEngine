@@ -1,6 +1,7 @@
 package searchengine.services.search;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.jsoup.Jsoup;
@@ -10,8 +11,6 @@ import searchengine.config.Site;
 import searchengine.config.SitesList;
 import searchengine.dto.search.SearchData;
 import searchengine.dto.search.SearchResponse;
-import searchengine.dto.search.SearchResponseWithData;
-import searchengine.dto.search.SearchResponseWithError;
 import searchengine.model.LemmaEntity;
 import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
@@ -21,15 +20,13 @@ import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.services.common.Lemmatizator;
 import searchengine.services.SearchService;
-
 import java.util.*;
-import java.util.logging.Logger;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SearchServiceImpl implements SearchService {
     private static final int DEFAULT_LEMMA_TOO_FREQUENT_THRESHOLD = 75;//In percents. Can be redefined in config file
-    private double lemmaThreshold = DEFAULT_LEMMA_TOO_FREQUENT_THRESHOLD;
     private static final int MIN_FREQUENCY_FOR_LEMMA_THRESHOLD = 5;
     private static final int WORDS_TO_SHOW_BEFORE = 4;
     private static final int WORDS_TO_SHOW_AFTER = 33;
@@ -38,8 +35,8 @@ public class SearchServiceImpl implements SearchService {
     private String lastSearchQuery = "";
     private TreeSet<Lemma> lemmas;
     private ArrayList<Integer> pages;
-    private SearchResponseWithData searchResponse = new SearchResponseWithData();
-    private final Logger log = Logger.getLogger(SearchServiceImpl.class.getName());
+    private SearchResponse searchResponse = new SearchResponse();
+    private double lemmaThreshold;
 
     private final Lemmatizator lemmatizator;
     private final SitesList sites;//From configuration file
@@ -50,17 +47,13 @@ public class SearchServiceImpl implements SearchService {
     private final SessionFactory sessionFactory;
 
 
-
     @Override
     public SearchResponse search(String query, String site, int offset, int limit) {
         initThreshold();
         log.info(query + " - " + "site: " + site + " - " + offset + " - " + limit + " lastSearchQuery: " + lastSearchQuery
                 + " searchResponseCount: " + searchResponse.getCount());
         if (query.isEmpty()) {
-            SearchResponseWithError response = new SearchResponseWithError();
-            response.setResult(false);
-            response.setError("Задан пустой поисковый запрос");
-            return response;
+            throw new WrongSearchQueryException("Задан пустой поисковый запрос");
         }
         if (site == null) {
             site = "";
@@ -79,80 +72,65 @@ public class SearchServiceImpl implements SearchService {
         return responseWithOffsetAndLimit(offset, limit);
     }
 
-
     private void initThreshold() {
         lemmaThreshold = (sites.getLemma_threshold() == 0) ? (double)DEFAULT_LEMMA_TOO_FREQUENT_THRESHOLD / 100 : (double)sites.getLemma_threshold() / 100;
     }
 
-
-
     private HashMap<Integer, Integer> getNumberOfPagesOnSites(String site) {
         HashMap<Integer, Integer> returnMap = new HashMap<>();
         totalPages = 0;
-        if (!site.isEmpty()) {
-            SiteEntity siteEntity = siteRepository.findByUrl(site);
-            log.info("Found. ID: " + siteEntity.getId() + " Name: " + siteEntity.getUrl());
-            int siteId = siteEntity.getId();
-            int pagesOnSite = pageRepository.countPagesOnSite(siteId);
-            totalPages += pagesOnSite;
-            returnMap.put(siteId, pagesOnSite);
-            return returnMap;
-        }
-
+        log.info((site.isEmpty()) ? "Searching for all sites" : "Searching for specific site: " + site);
         for (Site siteInput : sites.getSites()) {
-            log.info("Searching for all sites");
+            if (!site.isEmpty() && !siteInput.getUrl().equals(site)) {
+                continue;//Not our site if searching for specific one
+            }
             SiteEntity siteEntity = siteRepository.findByUrl(siteInput.getUrl());
             log.info("Found. ID: " + siteEntity.getId() + " Name: " + siteEntity.getUrl());
             int siteId = siteEntity.getId();
-            int pagesOnSite = pageRepository.countPagesOnSite(siteId);
-            returnMap.put(siteId, pagesOnSite);
+            int pagesOnSite = pageRepository.countBySiteEntity(siteEntity);
             totalPages += pagesOnSite;
+            returnMap.put(siteId, pagesOnSite);
         }
-
         return  returnMap;
     }
 
     private TreeSet<Lemma> makeSortedByFrequencyLemmaList(String[] words) {
-        //образ ошибка один пробка туалет
         TreeSet<Lemma> lemmas = new TreeSet<>(new LemmaComparator());
         log.info("Разбивка на слова и леммы поискового запроса:");
         for (String word : words) {
             Lemma lemma = new Lemma();
-
             String lemmaS = (!lemmatizator.getValidLemmas(word).isEmpty()) ? lemmatizator.getValidLemmas(word).get(0) : "";
             log.info(word + " - lemma: " + lemmaS);
-            if (!lemmaS.isEmpty()) {
-                List<LemmaEntity> lemmaEntities = lemmaRepository.findAllByLemma(lemmaS);
-                if (lemmaEntities == null) {
-                    lemma.setLemma(lemmaS);
-                    lemma.setFrequency(0);
-                    lemmas.add(lemma);
-                } else {
-                    int totalFrequencyForLemma = 0;
-                    for (LemmaEntity lemmaEntity : lemmaEntities) {
-                        if (siteIdForSearch == 0 || lemmaEntity.getSiteEntity().getId() == siteIdForSearch) {
-                            totalFrequencyForLemma += lemmaEntity.getFrequency();
-                        }
-                    }
-                    if (((double) totalFrequencyForLemma / (double) totalPages) < lemmaThreshold
-                            || totalFrequencyForLemma < MIN_FREQUENCY_FOR_LEMMA_THRESHOLD)
-                    {
-                        log.info("----->OK Lemma: " + lemmaS + " found in DB, threshold OK. " + "LemmaFrequency " + totalFrequencyForLemma + " totalPages: " +
-                                totalPages + " Lemma threshold: " + lemmaThreshold + ", adding to searchlist");
-                        lemma.setFrequency(totalFrequencyForLemma);
-                        lemma.setLemma(lemmaS);
-                        lemmas.add(lemma);
-                    } else {
-                        log.info("Lemma " + lemmaS + " found in DB, threshold NOT OK. LemmaFrequency: " + totalFrequencyForLemma + " totalPages: " + totalPages
-                                + " Lemma threshold: " + lemmaThreshold);
-                    }
-
+            if (lemmaS.isEmpty()) {
+                continue;
+            }
+            List<LemmaEntity> lemmaEntities = lemmaRepository.findAllByLemma(lemmaS);
+            if (lemmaEntities == null) {
+                lemma.setLemma(lemmaS);
+                lemma.setFrequency(0);
+                lemmas.add(lemma);
+                continue;
+            }
+            int totalFrequencyForLemma = 0;
+            for (LemmaEntity lemmaEntity : lemmaEntities) {
+                if (siteIdForSearch == 0 || lemmaEntity.getSiteEntity().getId() == siteIdForSearch) {
+                    totalFrequencyForLemma += lemmaEntity.getFrequency();
                 }
+            }
+            if (((double) totalFrequencyForLemma / (double) totalPages) < lemmaThreshold
+                    || totalFrequencyForLemma < MIN_FREQUENCY_FOR_LEMMA_THRESHOLD) {
+                log.info("----->OK Lemma: " + lemmaS + " found in DB, threshold OK. " + "LemmaFrequency " + totalFrequencyForLemma + " totalPages: " +
+                        totalPages + " Lemma threshold: " + lemmaThreshold + ", adding to searchlist");
+                lemma.setFrequency(totalFrequencyForLemma);
+                lemma.setLemma(lemmaS);
+                lemmas.add(lemma);
+            } else {
+                log.info("Lemma " + lemmaS + " found in DB, threshold NOT OK. LemmaFrequency: " + totalFrequencyForLemma + " totalPages: " + totalPages
+                        + " Lemma threshold: " + lemmaThreshold);
             }
         }
         return lemmas;
     }
-
 
     private ArrayList<Integer> returnSuitablePages(TreeSet<Lemma> lemmas, String site) {
         int siteId;
@@ -164,7 +142,6 @@ public class SearchServiceImpl implements SearchService {
         if (lemmas.first().getFrequency() == 0) {
             return pages;
         }
-
         if (site.isEmpty()) {
             siteId = 0;
             log.info("Search all sites");
@@ -173,22 +150,17 @@ public class SearchServiceImpl implements SearchService {
             log.info("Search 1 specific site ID: " + siteId);
         }
 
-
-
         for (Lemma lemma : lemmas) {
             pages = findAllPagesIDByLemmaAndPageList(lemma.getLemma(), pages, siteId);
             if (!lemma.equals(lemmas.first()) && pages.isEmpty()) {
                 return pages;
             }
         }
-
-
         return pages;
     }
 
-
-    private SearchResponseWithData makeResponseForSearch(ArrayList<Integer> pages, TreeSet<Lemma> lemmas) {
-        SearchResponseWithData response = new SearchResponseWithData();
+    private SearchResponse makeResponseForSearch(ArrayList<Integer> pages, TreeSet<Lemma> lemmas) {
+        SearchResponse response = new SearchResponse();
         response.setResult(true);
 
         if (pages.isEmpty()) {
@@ -199,8 +171,9 @@ public class SearchServiceImpl implements SearchService {
 
         ArrayList<PageEntity> pageEntities = (ArrayList<PageEntity>) pageRepository.findAllById(pages);
         TreeSet<PageWithRelevance> sortedByRelevancePages = calculateRelevanceAndSortPagesByRelevance(pageEntities, lemmas);
+        log.info("Sorting pages by relevance:");
         sortedByRelevancePages.forEach(( page) ->
-                log.info(page.getRelevance() + " - page: " + page.getPageEntity().getId() + " "
+                log.info(page.getRelevance() + " - pageId: " + page.getPageEntity().getId() + " "
                         + page.getPageEntity().getSiteEntity().getUrl() + page.getPageEntity().getPath()));
 
         List<SearchData> searchDataList = new ArrayList<>();
@@ -218,19 +191,13 @@ public class SearchServiceImpl implements SearchService {
             searchData.setSiteName(site.getName());
             searchDataList.add(searchData);
         }
-
-
-
         response.setData(searchDataList);
         response.setCount(searchDataList.size());
-
 
         return response;
     }
 
     private ArrayList<Integer> findAllPagesIDByLemmaAndPageList(String lemma, List<Integer> pages, int siteID) {
-
-
         StringBuilder pagesStringForQuery = new StringBuilder();
         Session session = sessionFactory.openSession();
 
@@ -249,7 +216,6 @@ public class SearchServiceImpl implements SearchService {
                 pagesStringForQuery.append(page).append(",");
             }
             pagesStringForQuery.delete(pagesStringForQuery.length() - 1, pagesStringForQuery.length());
-//            log.info("Formed string for query: " + pagesStringForQuery.toString());
             sql += " and id in(" + pagesStringForQuery + ")";
         }
         log.info("Final sql string:\n" + sql);
@@ -257,6 +223,7 @@ public class SearchServiceImpl implements SearchService {
         ArrayList<Integer> pagesFromQuery = (ArrayList<Integer>) session.createSQLQuery(sql).list();
         log.info("Returned: " + pagesFromQuery.size() + " " + pagesFromQuery);
         session.close();
+
         return pagesFromQuery;
     }
 
@@ -271,14 +238,20 @@ public class SearchServiceImpl implements SearchService {
         float[] absPageRank = new float[numberOfPages];
         float[] relPageRank = new float[numberOfPages];
         float[][] lemmaRankOnPage = new float[numberOfPages][numberOfLemmas];
+        LemmaEntity lemmaEntity;
 
         int i = 0;
-        for (PageEntity page : pageEntities) {
+        for (PageEntity pageEntity : pageEntities) {
 
             int j = 0;
             for (Lemma lemma : lemmas) {
-                lemmaRankOnPage[i][j] = indexRepository.getRankForLemmaAndPage(lemma.getLemma(), page.getId());
-                absPageRank[i] += lemmaRankOnPage[i][j];
+                List<LemmaEntity> lemmaEntityList = lemmaRepository.findByLemmaAndSiteEntity(lemma.getLemma(), pageEntity.getSiteEntity());
+                if (!lemmaEntityList.isEmpty()) {
+                    lemmaEntity = lemmaEntityList.get(0);
+
+                    lemmaRankOnPage[i][j] = indexRepository.findByLemmaEntityAndPageEntity(lemmaEntity, pageEntity).getRank();
+                    absPageRank[i] += lemmaRankOnPage[i][j];
+                }
                 j++;
             }
             if (absPageRank[i] > maxAbsRelevance) {
@@ -315,13 +288,10 @@ public class SearchServiceImpl implements SearchService {
         }
         //------------------end logging
 
-
         return returnSet;
     }
 
-
     private String getSnippet(PageEntity page, TreeSet<Lemma> lemmas) {
-
         if (page == null || lemmas == null) {
             return "";
         }
@@ -329,18 +299,22 @@ public class SearchServiceImpl implements SearchService {
             return "";
         }
         String[] words = lemmatizator.splitOnWords(lemmatizator.removeHTMLTagsEnglishWordsAndDigitsRemains(page.getContent()));
-//        String[] words = lemmatizator.splitOnWords(lemmatizator.removeHTMLTags(page.getContent()));
         if (words.length == 0) {
             return "";
         }
 
         TreeSet<RankedLemmaOnPage> sortedByRankLemmasOnPageSet = new TreeSet<>(new RankedLemmaOnPageComparator());
+        LemmaEntity lemmaEntity;
         for (Lemma lemma : lemmas) {
-            int rank = indexRepository.getRankForLemmaAndPage(lemma.getLemma(), page.getId());
-            RankedLemmaOnPage rankedLemmaOnPage = new RankedLemmaOnPage();
-            rankedLemmaOnPage.setRank(rank);
-            rankedLemmaOnPage.setLemma(lemma.getLemma());
-            sortedByRankLemmasOnPageSet.add(rankedLemmaOnPage);
+            List<LemmaEntity> lemmaEntityList = lemmaRepository.findByLemmaAndSiteEntity(lemma.getLemma(), page.getSiteEntity());
+            if (!lemmaEntityList.isEmpty()) {
+                lemmaEntity = lemmaEntityList.get(0);
+                float rank = indexRepository.findByLemmaEntityAndPageEntity(lemmaEntity, page).getRank();
+                RankedLemmaOnPage rankedLemmaOnPage = new RankedLemmaOnPage();
+                rankedLemmaOnPage.setRank(rank);
+                rankedLemmaOnPage.setLemma(lemma.getLemma());
+                sortedByRankLemmasOnPageSet.add(rankedLemmaOnPage);
+            }
         }
 
         ArrayList<String> fragments = getAllFragments(words, sortedByRankLemmasOnPageSet.first());
@@ -375,17 +349,13 @@ public class SearchServiceImpl implements SearchService {
                 str = makeTextFragment(words, foundPosition);
                 returnList.add(str);
             }
-
             i++;
         }
-
 
         return returnList;
     }
 
     private String makeTextFragment(String[] words, int position) {
-
-
         StringBuilder str = new StringBuilder();
         int startPosition;
         int endPosition;
@@ -400,7 +370,6 @@ public class SearchServiceImpl implements SearchService {
         if (endPosition - startPosition < WORDS_TO_SHOW_AFTER) {
             startPosition = Math.max(0, endPosition - WORDS_TO_SHOW_AFTER);
         }
-//        log.info("Startposition: " + startPosition + " End_POS: " + endPosition + " found: " + position);
 
         for (int i = startPosition; i <= endPosition; i++) {
             str.append(words[i]).append(" ");
@@ -452,21 +421,18 @@ public class SearchServiceImpl implements SearchService {
 
         lemmas = makeSortedByFrequencyLemmaList(lemmatizator.splitOnWordsAndLower(query));
 
-
         log.info("Выводим леммы. Их " + lemmas.size());
         for (Lemma lemma : lemmas) {
             log.info('"' + lemma.getLemma() + '"' + " frequency: " + lemma.getFrequency());
-
-
         }
 
         pages = returnSuitablePages(lemmas, site);
         log.info("Founded pages: " + pages.toString());
     }
 
-    private SearchResponseWithData responseWithOffsetAndLimit(int offset, int limit) {
-     SearchResponseWithData returnResponse = new SearchResponseWithData();
-     returnResponse.setResult(searchResponse.isResult());
+    private SearchResponse responseWithOffsetAndLimit(int offset, int limit) {
+     SearchResponse returnResponse = new SearchResponse();
+     returnResponse.setResult(searchResponse.getResult());
      returnResponse.setCount(searchResponse.getCount());
      int numberOfPages = searchResponse.getData().size();
      int statPosition = offset;
@@ -479,7 +445,6 @@ public class SearchServiceImpl implements SearchService {
      }
 
      ArrayList<SearchData> returnSearchDataList = new ArrayList<>();
-
      for (int i = statPosition; i < finalPosition; i++) {
          returnSearchDataList.add(searchResponse.getData().get(i));
      }

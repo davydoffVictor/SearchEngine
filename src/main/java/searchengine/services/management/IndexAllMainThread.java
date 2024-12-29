@@ -1,36 +1,30 @@
 package searchengine.services.management;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
-import searchengine.services.statistics.StatisticsServiceImpl;
 
 import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.logging.Logger;
 
+@Slf4j
+@RequiredArgsConstructor
 public class IndexAllMainThread implements Runnable {
     private final ManagementServiceImpl service;
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
     private final SitesList sites;
-    private final Logger log = Logger.getLogger(IndexAllMainThread.class.getName());
-
-    public IndexAllMainThread(ManagementServiceImpl managementService, SiteRepository siteRepository, PageRepository pageRepository, SitesList sites) {
-        this.service = managementService;
-        this.siteRepository = siteRepository;
-        this.pageRepository = pageRepository;
-        this.sites = sites;
-    }
 
     @Override
     public void run() {
 
         for (Site siteInput : sites.getSites()) {
-            Logger.getLogger(StatisticsServiceImpl.class.getName()).info(siteInput.getName() + " " + siteInput.getUrl());
+            log.info(siteInput.getName() + " " + siteInput.getUrl());
             service.createNewDeleteOld(siteInput, "INDEXING", "");
         }
 
@@ -50,20 +44,18 @@ public class IndexAllMainThread implements Runnable {
             try {
                 log.info(fS.get());
             } catch (Exception e) {
-                e.printStackTrace();
+                log.error(e.getMessage(), e);
             }
         }
 
-
-
         executor.shutdown();
-
         log.info("End of IndexAllMainThread");
-        service.deleteDuplicatedLemmasForSites();
+        try {
+            service.deleteDuplicatedLemmasForSites();
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
         service.setIndexingIsStopped(true);
         service.setIndexingIsRunning(false);
-
     }
-
-
 }
